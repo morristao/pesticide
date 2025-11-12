@@ -1,0 +1,29 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+*/.venv/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+
+# Local configs / secrets
+cloudflared/config.yml
+.env
+.env.*
+
+# Tooling outputs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs / temp
+*.log
+*.tmp
+

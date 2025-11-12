@@ -1,0 +1,10 @@
+# cloudflared/config.yml.template
+# 部署時請將此檔案複製為 cloudflared/config.yml，並填入實際的 tunnel 名稱與 credentials 路徑。
+
+tunnel: pest-backend
+credentials-file: /Users/<your-username>/.cloudflared/pest-backend.json
+
+ingress:
+  - hostname: api.your-domain.com
+    service: http://localhost:8000
+  - service: http_status:404

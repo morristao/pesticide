@@ -1,0 +1,156 @@
+openspec: 0.1
+artifact: pest-detection-service
+version: 0.2.0
+status: draft
+owners:
+  - name: Morris Tao
+    role: Product Owner
+  - name: Codex Agent
+    role: Implementer
+changelog:
+  - version: 0.2.0
+    date: 2024-05-21
+    summary: Added HTTPS launch flow, CORS/host hardening via environment variables, and secure deployment guidance.
+  - version: 0.1.0
+    date: 2024-05-20
+    summary: Initial remote-accessible pest/disease detection web service with pluggable model registry.
+
+context:
+  problem: Field teams need a lightweight way to upload crop images from outside the lab network and retrieve pest/disease assessments without redeploying code when new models are available.
+  goals:
+    - Provide a browser-based workflow that works over non-local connections.
+    - Support lossless image upload and server-side inference.
+    - Allow flexible registration of additional ML models without touching the frontend.
+  non_goals:
+    - Building production-grade training pipelines.
+    - Providing offline/mobile binaries.
+
+functional_requirements:
+  - id: FR-001
+    statement: Users must upload an image (JPG/PNG/WEBP) and pick a model, then receive a JSON prediction payload.
+    acceptance:
+      - POST /api/v1/infer with multipart body returns 200 and JSON containing model metadata, label, confidence, and extra scoring fields.
+  - id: FR-002
+    statement: The UI must list all registered models dynamically so new models appear without frontend changes.
+    acceptance:
+      - GET /api/v1/models reflects registry contents; frontend populates select box from this endpoint.
+  - id: FR-003
+    statement: Remote clients must be able to call the API from outside the local machine.
+    acceptance:
+      - Default deployment binds to 0.0.0.0 and exposes `/api` plus UI over the configured interface.
+      - CORS accepted origins are configurable via APP_ALLOWED_ORIGINS.
+  - id: FR-004
+    statement: Operators must be able to expose the service over HTTPS with user-provided TLS certificates.
+    acceptance:
+      - Providing SSL_CERTFILE/SSL_KEYFILE and running `run_secure.sh` serves the API/UI over HTTPS.
+      - APP_TRUSTED_HOSTS restricts host headers when set; APP_FORCE_HTTPS enforces redirects.
+
+non_functional_requirements:
+  - id: NFR-001
+    statement: Requests under 10 MB should be processed in < 5 seconds on baseline hardware.
+  - id: NFR-002
+    statement: Service must degrade gracefully when receiving invalid images (returns HTTP 400).
+  - id: NFR-003
+    statement: Registry must prevent duplicate model IDs and surface human-readable errors.
+  - id: NFR-004
+    statement: Security-sensitive configuration must be controlled by environment variables (no code change required to tighten origins/hosts/credentials).
+
+architecture:
+  overview: |
+    FastAPI hosts API endpoints and static assets. A ModelRegistry maintains pluggable inference backends implementing the BasePestModel interface. Frontend assets (HTML/CSS/JS) call the API over HTTPS/HTTP and present results.
+  components:
+    - name: FastAPI Service
+      responsibilities:
+        - Handle health, model listing, and inference endpoints.
+        - Serve static UI bundle.
+        - Normalize uploaded images via Pillow before inference.
+        - Apply CORS/TrustedHost/HTTPSRedirect middleware based on environment configuration.
+    - name: Model Registry
+      responsibilities:
+        - Maintain in-memory map of model_id -> model instance.
+        - Provide async predict() dispatch.
+        - Reject duplicate registrations.
+    - name: Frontend UI
+      responsibilities:
+        - Fetch models and populate dropdown.
+        - Send FormData with selected model and file.
+        - Render JSON response and user messaging.
+
+interfaces:
+  - name: List Models
+    method: GET
+    path: /api/v1/models
+    success_response:
+      status: 200
+      body:
+        content_type: application/json
+        schema:
+          type: array
+          items:
+            $ref: '#/schemas/ModelInfo'
+  - name: Run Inference
+    method: POST
+    path: /api/v1/infer
+    request:
+      content_type: multipart/form-data
+      fields:
+        - name: model_id
+          type: string
+        - name: image
+          type: binary
+    success_response:
+      status: 200
+      body:
+        content_type: application/json
+        schema:
+          $ref: '#/schemas/PredictionPayload'
+    error_responses:
+      - status: 400
+        description: Invalid image data.
+      - status: 404
+        description: Unknown model.
+
+schemas:
+  ModelInfo:
+    type: object
+    required: [id, name, version, description, labels]
+    properties:
+      id: { type: string }
+      name: { type: string }
+      version: { type: string }
+      description: { type: string }
+      labels:
+        type: array
+        items: { type: string }
+  PredictionPayload:
+    type: object
+    required: [model, label, confidence, extra]
+    properties:
+      model: { $ref: '#/schemas/ModelInfo' }
+      label: { type: string }
+      confidence: { type: number, minimum: 0, maximum: 1 }
+      extra:
+        type: object
+        additionalProperties:
+          type: number
+
+extensibility:
+  model_plugin_contract:
+    description: |
+      New models must expose a class with `metadata: ModelMetadata` and an async `predict(Image.Image) -> Prediction` method, then register via `load_models()`.
+    steps:
+      - Drop implementation into app/models/*.py.
+      - Import and register inside app/models/__init__.py::load_models.
+      - Restart uvicorn; endpoint list updates automatically.
+  deployment:
+    run:
+      - default: uvicorn app.main:app --host 0.0.0.0 --port 8000
+      - secure: SSL_CERTFILE=/path/cert SSL_KEYFILE=/path/key bash run_secure.sh
+      - windows: py -3 -m venv .venv && .venv\Scripts\Activate.ps1 && pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env:
+      - PYTHONPATH=backend
+      - APP_ALLOWED_ORIGINS (comma-separated, defaults to '*')
+      - APP_TRUSTED_HOSTS (comma-separated, defaults to '*')
+      - APP_FORCE_HTTPS (true/false)
+      - APP_ALLOW_CREDENTIALS (true/false)
+      - SSL_CERTFILE / SSL_KEYFILE (required for run_secure.sh; use PowerShell `$env:VAR` on Windows)
