@@ -11,10 +11,11 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
+from typing import Annotated
 
 from app.core.model_registry import ModelRegistry
 from app.models import load_models
-from app.schemas import ModelInfo, PredictionPayload
+from app.schemas import ModelInfo, PredictionPayload, CompactPrediction
 
 
 def _parse_csv(value: str, allow_wildcard: bool = True) -> list[str]:
@@ -110,7 +111,9 @@ async def list_models() -> list[ModelInfo]:
 
 @app.post("/api/v1/infer", response_model=PredictionPayload)
 async def infer(
-    model_id: str = Form(...),
+    # Avoid pydantic protected namespace warning by not naming the parameter "model_id",
+    # while still accepting the incoming form field as "model_id" via alias.
+    selected_model: Annotated[str, Form(alias="model_id")],
     image: UploadFile = File(...),
 ) -> PredictionPayload:
     try:
@@ -121,8 +124,8 @@ async def infer(
         raise HTTPException(status_code=400, detail="Invalid or corrupt image file.") from exc
 
     try:
-        prediction = await registry.predict(model_id=model_id, image=pil_image)
-        model = registry.get(model_id)
+        prediction = await registry.predict(model_id=selected_model, image=pil_image)
+        model = registry.get(selected_model)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -139,3 +142,23 @@ async def infer(
         extra=prediction.extra,
     )
     return payload
+
+
+@app.post("/api/v1/infer/compact", response_model=CompactPrediction)
+async def infer_compact(
+    selected_model: Annotated[str, Form(alias="model_id")],
+    image: UploadFile = File(...),
+) -> CompactPrediction:
+    try:
+        contents = await image.read()
+        pil_image = Image.open(io.BytesIO(contents))
+        pil_image = pil_image.convert("RGB")
+    except UnidentifiedImageError as exc:
+        raise HTTPException(status_code=400, detail="Invalid or corrupt image file.") from exc
+
+    try:
+        prediction = await registry.predict(model_id=selected_model, image=pil_image)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return CompactPrediction(label=prediction.label, confidence=prediction.confidence)

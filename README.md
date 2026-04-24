@@ -24,6 +24,24 @@ $env:PYTHONPATH = (Get-Location)
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+```other way
+py -3.12 -m venv $env:USERPROFILE\.venvs\pesticide
+
+& $env:USERPROFILE\.venvs\pesticide\Scripts\Activate.ps1
+
+pip install -r backend\requirements.txt
+
+cd backend
+
+$env:PYTHONPATH = (Get-Location)
+
+$env:LEAF9_MODE = 'ova'
+
+.\run_uvicorn.ps1
+
+```
+
+
 開啟 `http://127.0.0.1:8000`；若要讓同實驗室網段的其他裝置測試，改成 Windows 桌機的區網 IP。
 
 ### Secure Remote Access
@@ -62,6 +80,64 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 4. Open firewall/router port `8443` and connect from outside using `https://<public-ip-or-domain>:8443`.
 
 > `APP_ALLOWED_ORIGINS` and `APP_TRUSTED_HOSTS` accept comma-separated lists; set them to `"*"` only for trusted private networks.
+
+### Using Your Leaf 9-Class PyTorch Model
+
+This backend can load the PyTorch checkpoint and labels from an internal folder (default) or an external folder.
+
+- Default in-repo location:
+  - `backend/model_store/leaf9/outputs/best.ckpt`
+  - `backend/model_store/leaf9/data/label_map.json`
+  - Create and copy on Windows (PowerShell):
+    - `New-Item -ItemType Directory -Force backend\model_store\leaf9\outputs | Out-Null`
+    - `New-Item -ItemType Directory -Force backend\model_store\leaf9\data | Out-Null`
+    - `Copy-Item "C:\\Users\\taolc\\Desktop\\Leaf_9_model\\outputs\\best.ckpt" "backend\\model_store\\leaf9\\outputs\\best.ckpt"`
+    - `Copy-Item "C:\\Users\\taolc\\Desktop\\Leaf_9_model\\data\\label_map.json" "backend\\model_store\\leaf9\\data\\label_map.json"`
+
+- Prerequisites (install into your backend venv):
+  - `pip install -r backend/requirements.txt` (now includes `torch`, `torchvision`, `numpy`)
+- Use an external folder instead (optional): point the app to your model directory (Windows example):
+  - PowerShell for current session: `$env:LEAF9_DIR = 'C:\\Users\\taolc\\Desktop\\Leaf_9_model'`
+  - To persist for your user: `setx LEAF9_DIR "C:\\Users\\taolc\\Desktop\\Leaf_9_model"`
+  - Optional overrides: `LEAF9_CKPT=best.ckpt`, `LEAF9_BACKBONE=auto`, `LEAF9_DEVICE=cpu|cuda`, `LEAF9_IMG_SIZE=448`
+- Expected files under `LEAF9_DIR`:
+  - `outputs/best.ckpt` (or set `LEAF9_CKPT`)
+  - `data/label_map.json`
+
+When the server starts, it will try to load `LeafNineModel`. If loading fails (e.g., files missing or PyTorch not installed), it will fall back to the built-in mock heuristic model.
+
+#### Option: OvA Ensemble (one-vs-all, best fold per class)
+
+If you have one binary checkpoint per class (e.g., 5 folds per class and you pick the best fold for each), you can enable the OvA ensemble:
+
+- Place checkpoints under `backend/model_store/leaf9/ova/` and create a mapping file `backend/model_store/leaf9/ova/ova_map.json`.
+- Example PowerShell copy commands:
+  - `New-Item -ItemType Directory -Force backend\model_store\leaf9\ova | Out-Null`
+  - Copy each chosen `best.ckpt` to a logical layout, e.g.:
+    - `backend\model_store\leaf9\ova\disease_ulcer\best.ckpt`
+    - `backend\model_store\leaf9\ova\pest_thrips\best.ckpt`
+    - ... and so on
+  - Create `backend\model_store\leaf9\ova\ova_map.json` with content like (paths are relative to the ova folder):
+    ```json
+    {
+      "models": {
+        "Healthy": { "ckpt": "healthy/best.ckpt", "backbone": "efficientnet_v2_s" },
+        "病害-潰瘍病": { "ckpt": "disease_ulcer/best.ckpt" },
+        "病害-煤煙病": { "ckpt": "disease_sooty/best.ckpt" },
+        "病害-油斑病": { "ckpt": "disease_greasy/best.ckpt" },
+        "病害-黑點病": { "ckpt": "disease_blackspot/best.ckpt" },
+        "蟲害-薊馬": { "ckpt": "pest_thrips/best.ckpt" },
+        "蟲害-潛葉蛾": { "ckpt": "pest_leafminer/best.ckpt" },
+        "蟲害-蚜蟲": { "ckpt": "pest_aphid/best.ckpt" },
+        "蟲害-介殼蟲": { "ckpt": "pest_scale/best.ckpt" }
+      }
+    }
+    ```
+- Set env to enable OVA (PowerShell):
+  - `$env:LEAF9_MODE = 'ova'`
+  - Optional: `$env:LEAF9_OVA_DIR = 'backend\model_store\leaf9\ova'`
+  - Optional: `$env:LEAF9_OVA_MAP = 'backend\model_store\leaf9\ova\ova_map.json'`
+- Restart the backend; the registered model id will be `leaf9-ova-v1`.
 
 ### Adding New Models
 

@@ -18,3 +18,8 @@ class PredictionPayload(BaseModel):
     label: str
     confidence: float = Field(ge=0, le=1)
     extra: dict[str, Any]
+
+
+class CompactPrediction(BaseModel):
+    label: str
+    confidence: float = Field(ge=0, le=1)

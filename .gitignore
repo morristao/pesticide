@@ -18,6 +18,9 @@ cloudflared/config.yml
 .env
 .env.*
 
+# Local model artifacts (do not commit large checkpoints)
+backend/model_store/
+
 # Tooling outputs
 .pytest_cache/
 .mypy_cache/

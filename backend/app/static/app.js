@@ -43,7 +43,7 @@ form.addEventListener('submit', async (event) => {
   statusBox.textContent = 'Running model...';
 
   try {
-    const res = await fetch('/api/v1/infer', {
+    const res = await fetch('/api/v1/infer/compact', {
       method: 'POST',
       body: formData,
     });
@@ -55,7 +55,8 @@ form.addEventListener('submit', async (event) => {
 
     const payload = await res.json();
     statusBox.textContent = 'Prediction ready';
-    resultBox.textContent = JSON.stringify(payload, null, 2);
+    const pct = (payload.confidence * 100).toFixed(1);
+    resultBox.textContent = `${payload.label} (${pct}%)`;
   } catch (error) {
     statusBox.textContent = error.message;
   } finally {
