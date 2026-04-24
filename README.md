@@ -83,22 +83,26 @@ $env:LEAF9_MODE = 'ova'
 
 ### Using Your Leaf 9-Class PyTorch Model
 
+This repo does NOT ship model weights by default. After cloning, download the checkpoint(s) + `label_map.json` separately and place them locally (or point `LEAF9_DIR` to an external folder). If loading fails (missing files / PyTorch not installed), the service falls back to the built-in mock heuristic model.
+
 This backend can load the PyTorch checkpoint and labels from an internal folder (default) or an external folder.
 
 - Default in-repo location:
   - `backend/model_store/leaf9/outputs/best.ckpt`
   - `backend/model_store/leaf9/data/label_map.json`
-  - Create and copy on Windows (PowerShell):
+  - Note: `backend/model_store/` is gitignored on purpose (large files stay local).
+  - Create folders on Windows (PowerShell):
     - `New-Item -ItemType Directory -Force backend\model_store\leaf9\outputs | Out-Null`
     - `New-Item -ItemType Directory -Force backend\model_store\leaf9\data | Out-Null`
-    - `Copy-Item "C:\\Users\\taolc\\Desktop\\Leaf_9_model\\outputs\\best.ckpt" "backend\\model_store\\leaf9\\outputs\\best.ckpt"`
-    - `Copy-Item "C:\\Users\\taolc\\Desktop\\Leaf_9_model\\data\\label_map.json" "backend\\model_store\\leaf9\\data\\label_map.json"`
+  - Put the downloaded files into:
+    - `backend\model_store\leaf9\outputs\best.ckpt`
+    - `backend\model_store\leaf9\data\label_map.json`
 
 - Prerequisites (install into your backend venv):
   - `pip install -r backend/requirements.txt` (now includes `torch`, `torchvision`, `numpy`)
 - Use an external folder instead (optional): point the app to your model directory (Windows example):
-  - PowerShell for current session: `$env:LEAF9_DIR = 'C:\\Users\\taolc\\Desktop\\Leaf_9_model'`
-  - To persist for your user: `setx LEAF9_DIR "C:\\Users\\taolc\\Desktop\\Leaf_9_model"`
+  - PowerShell for current session: `$env:LEAF9_DIR = 'C:\\path\\to\\Leaf_9_model'`
+  - To persist for your user: `setx LEAF9_DIR "C:\\path\\to\\Leaf_9_model"`
   - Optional overrides: `LEAF9_CKPT=best.ckpt`, `LEAF9_BACKBONE=auto`, `LEAF9_DEVICE=cpu|cuda`, `LEAF9_IMG_SIZE=448`
 - Expected files under `LEAF9_DIR`:
   - `outputs/best.ckpt` (or set `LEAF9_CKPT`)
